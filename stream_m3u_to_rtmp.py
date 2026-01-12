@@ -37,17 +37,28 @@ def parse_m3u_playlist(m3u_path):
                 else:
                     current_name = None
             elif line and not line.startswith('#'):
-                # This is a file path
+                # This is a file path or URL
                 video_path = line.strip()
-                # Resolve relative paths relative to M3U file location
-                if not os.path.isabs(video_path):
+                
+                # Check if it's a URL (http, https, rtmp, etc.)
+                is_url = (video_path.startswith('http://') or 
+                         video_path.startswith('https://') or
+                         video_path.startswith('rtmp://') or
+                         video_path.startswith('rtsp://') or
+                         video_path.startswith('udp://') or
+                         video_path.startswith('tcp://'))
+                
+                # Only resolve relative paths for local files, not URLs
+                if not is_url and not os.path.isabs(video_path):
                     m3u_dir = os.path.dirname(os.path.abspath(m3u_path))
                     video_path = os.path.join(m3u_dir, video_path)
                     video_path = os.path.normpath(video_path)
                 
+                # For URLs, use the URL as-is. For local files, check existence later
                 videos.append({
-                    'name': current_name or os.path.basename(video_path),
-                    'path': video_path
+                    'name': current_name or (os.path.basename(video_path) if not is_url else video_path),
+                    'path': video_path,
+                    'is_url': is_url
                 })
                 current_name = None
     except Exception as e:
@@ -56,20 +67,22 @@ def parse_m3u_playlist(m3u_path):
     
     return videos
 
-def stream_video_to_rtmp(video_path, rtmp_url, ffmpeg_path='ffmpeg', loop=False):
+def stream_video_to_rtmp(video_path, rtmp_url, ffmpeg_path='ffmpeg', loop=False, is_url=False):
     """
-    Stream a single video file to RTMP server without re-encoding.
+    Stream a single video file or URL to RTMP server without re-encoding.
     
     Args:
-        video_path: Path to video file
+        video_path: Path to video file or URL
         rtmp_url: RTMP server URL
         ffmpeg_path: Path to ffmpeg executable
         loop: Whether to loop the video
+        is_url: Whether video_path is a URL (not a local file)
         
     Returns:
         True if successful, False otherwise
     """
-    if not os.path.exists(video_path):
+    # Only check file existence for local files, not URLs
+    if not is_url and not os.path.exists(video_path):
         print(f"Error: Video file not found: {video_path}")
         return False
     
@@ -169,10 +182,16 @@ def stream_m3u_to_rtmp(m3u_path, rtmp_url, ffmpeg_path='ffmpeg', loop_playlist=F
             for i, video in enumerate(videos, 1):
                 print(f"\n{'='*60}")
                 print(f"Streaming video {i}/{len(videos)}: {video['name']}")
-                print(f"File: {video['path']}")
+                print(f"Source: {video['path']}")
                 print(f"{'='*60}\n")
                 
-                success = stream_video_to_rtmp(video['path'], rtmp_url, ffmpeg_path, loop_video)
+                success = stream_video_to_rtmp(
+                    video['path'], 
+                    rtmp_url, 
+                    ffmpeg_path, 
+                    loop_video,
+                    video.get('is_url', False)
+                )
                 
                 if not success:
                     print(f"Failed to stream: {video['name']}")
