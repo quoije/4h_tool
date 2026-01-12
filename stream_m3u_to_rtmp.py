@@ -1,63 +1,93 @@
 #!/usr/bin/env python3
 """
-Stream M3U8 (HLS) live stream to RTMP server using ffmpeg without re-encoding.
+Stream M3U playlist files to RTMP server using ffmpeg without re-encoding.
 """
 
 import subprocess
 import sys
-import signal
 import os
 import argparse
 
-def stream_m3u_to_rtmp(m3u_url, rtmp_url, ffmpeg_path='ffmpeg'):
+def parse_m3u_playlist(m3u_path):
     """
-    Stream M3U8 playlist to RTMP server without re-encoding.
+    Parse M3U playlist file and extract video file paths.
     
     Args:
-        m3u_url: URL or path to M3U8 playlist file (supports both local files and URLs)
-        rtmp_url: RTMP server URL (e.g., rtmp://server/live/stream_key)
-        ffmpeg_path: Path to ffmpeg executable (default: 'ffmpeg')
+        m3u_path: Path to M3U playlist file
+        
+    Returns:
+        List of video file paths
     """
+    videos = []
+    try:
+        with open(m3u_path, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+        
+        current_name = None
+        for line in lines:
+            line = line.strip()
+            if not line or line.startswith('#EXTM3U'):
+                continue
+            
+            if line.startswith('#EXTINF'):
+                # Extract name from #EXTINF line: #EXTINF:-1,Video Name
+                parts = line.split(',', 1)
+                if len(parts) > 1:
+                    current_name = parts[1].strip()
+                else:
+                    current_name = None
+            elif line and not line.startswith('#'):
+                # This is a file path
+                video_path = line.strip()
+                # Resolve relative paths relative to M3U file location
+                if not os.path.isabs(video_path):
+                    m3u_dir = os.path.dirname(os.path.abspath(m3u_path))
+                    video_path = os.path.join(m3u_dir, video_path)
+                    video_path = os.path.normpath(video_path)
+                
+                videos.append({
+                    'name': current_name or os.path.basename(video_path),
+                    'path': video_path
+                })
+                current_name = None
+    except Exception as e:
+        print(f"Error parsing M3U file: {e}")
+        return []
     
-    # Check if it's a local file
-    is_local_file = not (m3u_url.startswith('http://') or m3u_url.startswith('https://') or m3u_url.startswith('rtmp://'))
+    return videos
+
+def stream_video_to_rtmp(video_path, rtmp_url, ffmpeg_path='ffmpeg', loop=False):
+    """
+    Stream a single video file to RTMP server without re-encoding.
     
-    if is_local_file:
-        # Convert to absolute path
-        m3u_path = os.path.abspath(m3u_url)
-        if not os.path.exists(m3u_path):
-            print(f"Error: Local M3U8 file not found: {m3u_path}")
-            return False
-        print(f"Using local M3U8 file: {m3u_path}")
-        m3u_input = m3u_path
-    else:
-        m3u_input = m3u_url
-    
-    # FFmpeg command for direct stream (no re-encoding)
-    # -i: input M3U8 URL
-    # -c copy: copy codecs without re-encoding
-    # -f flv: output format FLV (required for RTMP)
-    # -flvflags no_duration_filesize: avoid issues with FLV format
-    # -re: read input at native frame rate (important for live streams)
-    # -stream_loop -1: loop the stream indefinitely (for live streams, this might not be needed)
+    Args:
+        video_path: Path to video file
+        rtmp_url: RTMP server URL
+        ffmpeg_path: Path to ffmpeg executable
+        loop: Whether to loop the video
+        
+    Returns:
+        True if successful, False otherwise
+    """
+    if not os.path.exists(video_path):
+        print(f"Error: Video file not found: {video_path}")
+        return False
     
     ffmpeg_cmd = [
         ffmpeg_path,
-        '-i', m3u_input,
+        '-re',  # Read input at native frame rate
+        '-i', video_path,
         '-c', 'copy',  # Copy all streams without re-encoding
         '-f', 'flv',   # RTMP requires FLV format
         '-flvflags', 'no_duration_filesize',
-        '-re',         # Read input at native frame rate
         rtmp_url
     ]
     
-    print(f"Starting stream from: {m3u_url}")
-    print(f"Streaming to: {rtmp_url}")
-    print(f"FFmpeg command: {' '.join(ffmpeg_cmd)}")
-    print("\nPress Ctrl+C to stop streaming...\n")
+    if loop:
+        ffmpeg_cmd.insert(2, '-stream_loop')
+        ffmpeg_cmd.insert(3, '-1')
     
     try:
-        # Start ffmpeg process
         process = subprocess.Popen(
             ffmpeg_cmd,
             stdout=subprocess.PIPE,
@@ -72,7 +102,6 @@ def stream_m3u_to_rtmp(m3u_url, rtmp_url, ffmpeg_path='ffmpeg'):
                 if line:
                     print(line.strip())
         
-        # Monitor both stdout and stderr
         import threading
         stdout_thread = threading.Thread(target=print_output, args=(process.stdout,))
         stderr_thread = threading.Thread(target=print_output, args=(process.stderr,))
@@ -82,16 +111,13 @@ def stream_m3u_to_rtmp(m3u_url, rtmp_url, ffmpeg_path='ffmpeg'):
         stdout_thread.start()
         stderr_thread.start()
         
-        # Wait for process to complete
         process.wait()
         
         if process.returncode != 0:
             print(f"\nError: FFmpeg exited with code {process.returncode}")
             return False
-        else:
-            print("\nStream ended successfully")
-            return True
-            
+        return True
+        
     except KeyboardInterrupt:
         print("\n\nStopping stream...")
         if process:
@@ -102,9 +128,66 @@ def stream_m3u_to_rtmp(m3u_url, rtmp_url, ffmpeg_path='ffmpeg'):
                 process.kill()
         print("Stream stopped")
         return False
-    except FileNotFoundError:
-        print(f"Error: FFmpeg not found at '{ffmpeg_path}'")
-        print("Please install FFmpeg or provide the correct path")
+    except Exception as e:
+        print(f"Error: {e}")
+        return False
+
+def stream_m3u_to_rtmp(m3u_path, rtmp_url, ffmpeg_path='ffmpeg', loop_playlist=False, loop_video=False):
+    """
+    Stream M3U playlist to RTMP server without re-encoding.
+    
+    Args:
+        m3u_path: Path to M3U playlist file
+        rtmp_url: RTMP server URL (e.g., rtmp://server/live/stream_key)
+        ffmpeg_path: Path to ffmpeg executable (default: 'ffmpeg')
+        loop_playlist: Loop through the entire playlist when finished
+        loop_video: Loop each individual video
+    """
+    
+    # Convert to absolute path
+    m3u_path = os.path.abspath(m3u_path)
+    if not os.path.exists(m3u_path):
+        print(f"Error: M3U playlist file not found: {m3u_path}")
+        return False
+    
+    print(f"Parsing M3U playlist: {m3u_path}")
+    videos = parse_m3u_playlist(m3u_path)
+    
+    if not videos:
+        print("Error: No videos found in M3U playlist")
+        return False
+    
+    print(f"Found {len(videos)} video(s) in playlist:")
+    for i, video in enumerate(videos, 1):
+        print(f"  {i}. {video['name']} ({video['path']})")
+    
+    print(f"\nStreaming to: {rtmp_url}")
+    print("Press Ctrl+C to stop streaming...\n")
+    
+    try:
+        while True:
+            for i, video in enumerate(videos, 1):
+                print(f"\n{'='*60}")
+                print(f"Streaming video {i}/{len(videos)}: {video['name']}")
+                print(f"File: {video['path']}")
+                print(f"{'='*60}\n")
+                
+                success = stream_video_to_rtmp(video['path'], rtmp_url, ffmpeg_path, loop_video)
+                
+                if not success:
+                    print(f"Failed to stream: {video['name']}")
+                    if not loop_playlist:
+                        return False
+                    continue
+            
+            if not loop_playlist:
+                print("\nPlaylist finished streaming")
+                return True
+            
+            print("\nRestarting playlist...")
+            
+    except KeyboardInterrupt:
+        print("\n\nStreaming stopped by user")
         return False
     except Exception as e:
         print(f"Error: {e}")
@@ -112,11 +195,11 @@ def stream_m3u_to_rtmp(m3u_url, rtmp_url, ffmpeg_path='ffmpeg'):
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Stream M3U8 (HLS) live stream to RTMP server without re-encoding'
+        description='Stream M3U playlist files to RTMP server without re-encoding'
     )
     parser.add_argument(
-        'm3u_url',
-        help='URL or path to M3U8 playlist file (supports both local files and HTTP/HTTPS URLs)'
+        'm3u_file',
+        help='Path to M3U playlist file'
     )
     parser.add_argument(
         'rtmp_url',
@@ -127,12 +210,27 @@ def main():
         default='ffmpeg',
         help='Path to ffmpeg executable (default: ffmpeg)'
     )
+    parser.add_argument(
+        '--loop-playlist',
+        action='store_true',
+        help='Loop through the entire playlist when finished'
+    )
+    parser.add_argument(
+        '--loop-video',
+        action='store_true',
+        help='Loop each individual video file'
+    )
     
     args = parser.parse_args()
     
-    success = stream_m3u_to_rtmp(args.m3u_url, args.rtmp_url, args.ffmpeg)
+    success = stream_m3u_to_rtmp(
+        args.m3u_file,
+        args.rtmp_url,
+        args.ffmpeg,
+        args.loop_playlist,
+        args.loop_video
+    )
     sys.exit(0 if success else 1)
 
 if __name__ == '__main__':
     main()
-

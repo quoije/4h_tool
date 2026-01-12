@@ -1,13 +1,14 @@
-# M3U8 to RTMP Streamer
+# M3U to RTMP Streamer
 
-Python script to stream M3U8 (HLS) live streams to RTMP servers using ffmpeg without re-encoding.
+Python script to stream M3U playlist files to RTMP servers using ffmpeg without re-encoding.
 
 ## Features
 
 - Direct stream passthrough (no re-encoding)
-- Supports M3U8/HLS playlists
+- Supports M3U playlist files
 - Streams to RTMP servers
 - Real-time output monitoring
+- Playlist looping support
 - Graceful shutdown on Ctrl+C
 
 ## Requirements
@@ -29,33 +30,56 @@ Python script to stream M3U8 (HLS) live streams to RTMP servers using ffmpeg wit
 ### Basic Usage
 
 ```bash
-python stream_m3u_to_rtmp.py <m3u_url> <rtmp_url>
+python stream_m3u_to_rtmp.py <m3u_file> <rtmp_url>
 ```
 
 ### Examples
 
 ```bash
-# Stream from M3U8 URL to RTMP server
+# Stream M3U playlist to RTMP server
 python stream_m3u_to_rtmp.py \
-  "https://example.com/live/stream.m3u8" \
+  "playlist.m3u" \
   "rtmp://live.twitch.tv/app/your_stream_key"
 
-# Stream from local M3U8 file (relative or absolute path)
+# Stream with absolute path
 python stream_m3u_to_rtmp.py \
-  "playlist.m3u8" \
+  "C:/path/to/playlist.m3u" \
   "rtmp://server.com/live/stream_key"
 
-# Stream from local M3U8 file with absolute path
+# Loop through playlist when finished
 python stream_m3u_to_rtmp.py \
-  "C:/path/to/playlist.m3u8" \
-  "rtmp://server.com/live/stream_key"
+  "playlist.m3u" \
+  "rtmp://server.com/live/key" \
+  --loop-playlist
+
+# Loop each individual video
+python stream_m3u_to_rtmp.py \
+  "playlist.m3u" \
+  "rtmp://server.com/live/key" \
+  --loop-video
 
 # Specify custom ffmpeg path
 python stream_m3u_to_rtmp.py \
-  "https://example.com/stream.m3u8" \
+  "playlist.m3u" \
   "rtmp://server.com/live/key" \
   --ffmpeg "C:/ffmpeg/bin/ffmpeg.exe"
 ```
+
+## M3U Playlist Format
+
+The script supports standard M3U playlist format:
+
+```
+#EXTM3U
+#EXTINF:-1,Video Name 1
+/path/to/video1.mp4
+#EXTINF:-1,Video Name 2
+/path/to/video2.mp4
+```
+
+- `#EXTM3U` - Playlist header (optional)
+- `#EXTINF:-1,Name` - Video metadata (optional, -1 means unknown duration)
+- File paths can be absolute or relative to the M3U file location
 
 ## RTMP URL Format
 
@@ -69,19 +93,26 @@ Examples:
 - YouTube: `rtmp://a.rtmp.youtube.com/live2/YOUR_STREAM_KEY`
 - Custom server: `rtmp://your-server.com:1935/live/stream_key`
 
+## Options
+
+- `--loop-playlist`: Loop through the entire playlist when finished
+- `--loop-video`: Loop each individual video file indefinitely
+- `--ffmpeg`: Specify custom path to ffmpeg executable
+
 ## How It Works
 
-The script uses ffmpeg with:
-- `-c copy`: Copies all codecs without re-encoding (passthrough)
-- `-f flv`: Outputs in FLV format (required for RTMP)
-- `-re`: Reads input at native frame rate
-- Direct stream from M3U8 to RTMP
+The script:
+1. Parses the M3U playlist file to extract video file paths
+2. Streams each video sequentially to the RTMP server
+3. Uses ffmpeg with `-c copy` to passthrough without re-encoding
+4. Outputs in FLV format (required for RTMP)
 
 ## Notes
 
-- The stream will continue until stopped (Ctrl+C) or the source ends
+- The script streams videos in the order they appear in the playlist
+- Relative paths in M3U files are resolved relative to the M3U file location
 - No re-encoding means very low CPU usage
-- Requires the source stream codecs to be compatible with RTMP/FLV
+- Requires the source video codecs to be compatible with RTMP/FLV
 - If codec compatibility issues occur, you may need to re-encode (remove `-c copy`)
 
 ## Troubleshooting
@@ -89,5 +120,5 @@ The script uses ffmpeg with:
 - **FFmpeg not found**: Install FFmpeg or use `--ffmpeg` to specify path
 - **Connection errors**: Check RTMP URL and network connectivity
 - **Codec errors**: Source codecs may not be RTMP-compatible, may need re-encoding
-- **Stream stops**: Check source M3U8 URL is accessible and valid
-
+- **File not found**: Check video file paths in the M3U playlist are correct
+- **Playlist empty**: Ensure M3U file contains valid video file paths
