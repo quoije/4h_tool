@@ -40,9 +40,14 @@ python stream_m3u_to_rtmp.py \
   "https://example.com/live/stream.m3u8" \
   "rtmp://live.twitch.tv/app/your_stream_key"
 
-# Stream from local M3U8 file
+# Stream from local M3U8 file (relative or absolute path)
 python stream_m3u_to_rtmp.py \
   "playlist.m3u8" \
+  "rtmp://server.com/live/stream_key"
+
+# Stream from local M3U8 file with absolute path
+python stream_m3u_to_rtmp.py \
+  "C:/path/to/playlist.m3u8" \
   "rtmp://server.com/live/stream_key"
 
 # Specify custom ffmpeg path

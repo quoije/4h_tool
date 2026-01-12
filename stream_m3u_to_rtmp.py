@@ -14,10 +14,24 @@ def stream_m3u_to_rtmp(m3u_url, rtmp_url, ffmpeg_path='ffmpeg'):
     Stream M3U8 playlist to RTMP server without re-encoding.
     
     Args:
-        m3u_url: URL or path to M3U8 playlist file
+        m3u_url: URL or path to M3U8 playlist file (supports both local files and URLs)
         rtmp_url: RTMP server URL (e.g., rtmp://server/live/stream_key)
         ffmpeg_path: Path to ffmpeg executable (default: 'ffmpeg')
     """
+    
+    # Check if it's a local file
+    is_local_file = not (m3u_url.startswith('http://') or m3u_url.startswith('https://') or m3u_url.startswith('rtmp://'))
+    
+    if is_local_file:
+        # Convert to absolute path
+        m3u_path = os.path.abspath(m3u_url)
+        if not os.path.exists(m3u_path):
+            print(f"Error: Local M3U8 file not found: {m3u_path}")
+            return False
+        print(f"Using local M3U8 file: {m3u_path}")
+        m3u_input = m3u_path
+    else:
+        m3u_input = m3u_url
     
     # FFmpeg command for direct stream (no re-encoding)
     # -i: input M3U8 URL
@@ -29,7 +43,7 @@ def stream_m3u_to_rtmp(m3u_url, rtmp_url, ffmpeg_path='ffmpeg'):
     
     ffmpeg_cmd = [
         ffmpeg_path,
-        '-i', m3u_url,
+        '-i', m3u_input,
         '-c', 'copy',  # Copy all streams without re-encoding
         '-f', 'flv',   # RTMP requires FLV format
         '-flvflags', 'no_duration_filesize',
@@ -102,7 +116,7 @@ def main():
     )
     parser.add_argument(
         'm3u_url',
-        help='URL or path to M3U8 playlist file'
+        help='URL or path to M3U8 playlist file (supports both local files and HTTP/HTTPS URLs)'
     )
     parser.add_argument(
         'rtmp_url',
