@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+*.env
+.DS_Store
+*.log
+.vscode/
+.idea/
+*.m3u8
+*.m3u
