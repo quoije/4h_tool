@@ -30,7 +30,11 @@ Python script to stream M3U playlist files to RTMP servers using ffmpeg without 
 ### Basic Usage
 
 ```bash
+# Stream M3U playlist
 python stream_m3u_to_rtmp.py <m3u_file> <rtmp_url>
+
+# Stream single video file
+python stream_m3u_to_rtmp.py <video_file> <rtmp_url> --single-file
 ```
 
 ### Examples
@@ -40,6 +44,22 @@ python stream_m3u_to_rtmp.py <m3u_file> <rtmp_url>
 python stream_m3u_to_rtmp.py \
   "playlist.m3u" \
   "rtmp://live.twitch.tv/app/your_stream_key"
+
+# Stream single local video file
+python stream_m3u_to_rtmp.py \
+  "video.mp4" \
+  "rtmp://server.com/live/stream_key" \
+  --single-file
+
+# Stream single video file (auto-detected by extension)
+python stream_m3u_to_rtmp.py \
+  "video.mp4" \
+  "rtmp://server.com/live/stream_key"
+
+# Stream single video URL
+python stream_m3u_to_rtmp.py \
+  "https://example.com/video.mp4" \
+  "rtmp://server.com/live/stream_key"
 
 # Stream with absolute path
 python stream_m3u_to_rtmp.py \
@@ -95,9 +115,18 @@ Examples:
 
 ## Options
 
-- `--loop-playlist`: Loop through the entire playlist when finished
+- `--loop-playlist`: Loop through the entire playlist when finished (M3U only)
 - `--loop-video`: Loop each individual video file indefinitely
+- `--single-file`: Treat input as a single video file instead of M3U playlist
 - `--ffmpeg`: Specify custom path to ffmpeg executable
+
+## Input Types
+
+The script supports two input types:
+
+1. **M3U Playlist Files**: Automatically detected by file extension (.m3u, .m3u8)
+2. **Single Video Files**: Automatically detected by video extensions (.mp4, .mkv, .avi, etc.) or use `--single-file` flag
+3. **Video URLs**: HTTP/HTTPS URLs are automatically treated as single video files
 
 ## How It Works
 

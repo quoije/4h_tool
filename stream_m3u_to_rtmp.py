@@ -214,11 +214,11 @@ def stream_m3u_to_rtmp(m3u_path, rtmp_url, ffmpeg_path='ffmpeg', loop_playlist=F
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Stream M3U playlist files to RTMP server without re-encoding'
+        description='Stream M3U playlist files or single video files to RTMP server without re-encoding'
     )
     parser.add_argument(
-        'm3u_file',
-        help='Path to M3U playlist file'
+        'input',
+        help='Path to M3U playlist file or single video file'
     )
     parser.add_argument(
         'rtmp_url',
@@ -232,23 +232,61 @@ def main():
     parser.add_argument(
         '--loop-playlist',
         action='store_true',
-        help='Loop through the entire playlist when finished'
+        help='Loop through the entire playlist when finished (M3U only)'
     )
     parser.add_argument(
         '--loop-video',
         action='store_true',
         help='Loop each individual video file'
     )
+    parser.add_argument(
+        '--single-file',
+        action='store_true',
+        help='Treat input as a single video file instead of M3U playlist'
+    )
     
     args = parser.parse_args()
     
-    success = stream_m3u_to_rtmp(
-        args.m3u_file,
-        args.rtmp_url,
-        args.ffmpeg,
-        args.loop_playlist,
-        args.loop_video
-    )
+    # Check if input is a single video file
+    input_path = os.path.abspath(args.input)
+    is_single_file = args.single_file
+    
+    # Auto-detect if not explicitly set
+    if not is_single_file:
+        # Check if file exists and has video extension
+        video_extensions = ['.mp4', '.mkv', '.avi', '.mov', '.flv', '.wmv', '.webm', '.m4v', '.ts', '.m2ts']
+        if os.path.exists(input_path):
+            _, ext = os.path.splitext(input_path.lower())
+            if ext in video_extensions:
+                is_single_file = True
+        # If it's a URL, treat as single file
+        elif args.input.startswith('http://') or args.input.startswith('https://'):
+            is_single_file = True
+    
+    if is_single_file:
+        # Stream single video file
+        print(f"Streaming single video file: {args.input}")
+        print(f"Streaming to: {args.rtmp_url}")
+        print("Press Ctrl+C to stop streaming...\n")
+        
+        is_url = args.input.startswith('http://') or args.input.startswith('https://')
+        success = stream_video_to_rtmp(
+            args.input,
+            args.rtmp_url,
+            args.ffmpeg,
+            args.loop_video,
+            is_url
+        )
+    else:
+        # Stream M3U playlist
+        success = stream_m3u_to_rtmp(
+            args.input,
+            args.rtmp_url,
+            args.ffmpeg,
+            args.loop_playlist,
+            args.loop_video
+        )
+    
     sys.exit(0 if success else 1)
 
 if __name__ == '__main__':
